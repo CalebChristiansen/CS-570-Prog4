@@ -14,6 +14,16 @@
 /* Global Variables  */
 char lineInput[MAXINPUT];
 char prevInput[MAXINPUT];
+char Input1[MAXINPUT];
+char Input2[MAXINPUT];
+char Input3[MAXINPUT];
+char Input4[MAXINPUT];
+char Input5[MAXINPUT];
+char Input6[MAXINPUT];
+char Input7[MAXINPUT];
+char Input8[MAXINPUT];
+char Input9[MAXINPUT];
+char Input10[MAXINPUT];
 char *wordLocations[MAXITEM]; // Each item is a pointer to the start of a word.
                               // access them by creating a pointer: char **pointer
                               // access pointer: *(pointer) or *(pointer + n)
@@ -24,7 +34,8 @@ int repeatFlag = 0;           // 0 if no !!, 1 if !! is first word on line
 int complete = 0;             // 0 if signum not detected
 int backgroundFlag = 0;       // 0 if wait, 1 if background
 int numOfCommands = 1;        // How many successful commands have been typed?
-char writeLocation[STORAGE];  // storage for the file to write to. 
+char writeLocation[STORAGE];  // storage for the file to write to.
+char rawInput[MAXINPUT];
 
 
 void myhandler(int signum) // not sure what this is for yet
@@ -32,6 +43,45 @@ void myhandler(int signum) // not sure what this is for yet
     //printf("Recieved SIGTERM (%d), and the special handler is running...\n", signum);
     complete = 1;
 
+}
+
+void copyString(char * sToCopy, char * sSaveLocation, int size)
+{
+    //copys an array of args to another array
+    int i = 0;
+    for (i = 0; i < size; i++) {
+        *sSaveLocation = *sToCopy;
+        sSaveLocation++;
+        sToCopy++;
+    }
+    
+}
+
+void saveToHistory(int instructNum)
+{
+    // After each command, save the array to its input location
+    if (instructNum == 1) {
+        copyString(rawInput, Input1, MAXINPUT);
+    } else if (instructNum == 2) {
+        copyString(rawInput, Input2, MAXINPUT);
+    } else if (instructNum == 3) {
+        copyString(rawInput, Input3, MAXINPUT);
+    } else if (instructNum == 4) {
+        copyString(rawInput, Input4, MAXINPUT);
+    } else if (instructNum == 5) {
+        copyString(rawInput, Input5, MAXINPUT);
+    } else if (instructNum == 6) {
+        copyString(rawInput, Input6, MAXINPUT);
+    } else if (instructNum == 7) {
+        copyString(rawInput, Input7, MAXINPUT);
+    } else if (instructNum == 8) {
+        copyString(rawInput, Input8, MAXINPUT);
+    } else if (instructNum == 9) {
+        copyString(rawInput, Input9, MAXINPUT);
+    } else if (instructNum == 10) {
+        copyString(rawInput, Input10, MAXINPUT);
+    }
+    return;
 }
 
 void resetGlobalVariables() {
@@ -43,6 +93,14 @@ void resetGlobalVariables() {
     backgroundFlag = 0;
 }
 
+void clearArray(char *arrayToClear, int size) {
+    int i = 0;
+    for (i = 0; i < size; i++) {
+        *arrayToClear = '\0';
+        arrayToClear++;
+    }
+}
+
 main()
 {
     char **wordLocationsPointer = wordLocations; //use *(wordLocationsPointer) to access
@@ -52,12 +110,13 @@ main()
 
     for(;;) {
         printf("%%%d%% ", numOfCommands);
-        parse();
+        parse(rawInput, 0);
+        
         /* check for EOF */
         if (doneEofFlag == -1 && numWords == 0) break;
         /* check for empty line */ 
         if (numWords == 0) continue;
-
+        
         /* check for cd */
         if (cdFlag != 0) {
             /* Check for too many arguments */
@@ -117,6 +176,7 @@ main()
         /* fork a child to run the requested program */
         child = fork();
         if (child == 0) {
+            // Child is doing this part
             /* redirect stdin to /dev/null */
             //int stdIn = open("/dev/null", O_RDONLY | O_RDWR | O_RDWR);
             //int dup2In = dup2(stdIn, STDIN_FILENO);
@@ -171,7 +231,55 @@ main()
 
 }
 
-int parse()
+char * getLine() {
+    char character;
+    int c;
+    c = 0;
+    do
+    {
+        character = getchar();
+        rawInput[c]   = character;
+        c++;
+    }
+    while(character != '\n');
+    c = c - 1;
+    rawInput[c] = '\0';
+    
+    return rawInput;
+}
+
+char * getHistory(int instructNum) {
+    // After each command, save the array to its input location
+    if (instructNum == 1) {
+        return Input1;
+    } else if (instructNum == 2) {
+        return Input2;
+    } else if (instructNum == 3) {
+        return Input3;
+    } else if (instructNum == 4) {
+        return Input4;
+    } else if (instructNum == 5) {
+        return Input5;
+    } else if (instructNum == 6) {
+        return Input6;
+    } else if (instructNum == 7) {
+        return Input7;
+    } else if (instructNum == 8) {
+        return Input8;
+    } else if (instructNum == 9) {
+        return Input9;
+    } else if (instructNum == 10) {
+        return Input10;
+    }
+    return rawInput;
+}
+
+int charToInt(char charToConvert) {
+    int x = charToConvert - '0';
+    return x;
+}
+
+int parse(char *rawInputPointer, int userInputFlag)
 {
     /* Local Variables */
     int wordSize = 1;
@@ -189,10 +297,24 @@ int parse()
     /* Reset Global Variables */
     resetGlobalVariables();
 
+    /* Prompt User for Input */
+    if (userInputFlag == 0) {
+        clearArray(rawInput, MAXINPUT);
+        rawInputPointer = getLine();
+    } else {
+        rawInputPointer = getHistory(userInputFlag);
+    }
+    
+    /* Store to history */
+    saveToHistory(numOfCommands);
+    
     // Store words into: lineInput
     // Store word locations (pointers) into: wordLocations
+
     while (wordSize > 0) {
-        wordSize = getword(lineInputPointer);
+        
+        wordSize = getword(lineInputPointer, rawInputPointer);
+        rawInputPointer = rawInputPointer + wordSize + 1;
         *wordLocationsPointer = lineInputPointer;
         /* Check for done special case: wordSize is -1 if done is first word */
         if (wordSize == -1 && (*lineInputPointer) == 'd' && numWords > 0) {
@@ -216,12 +338,25 @@ int parse()
             while (*(lineInputPointer++) = *(prevInputPointer++));
             lineInputPointer = lineInput;
             /* Throw away the rest of the line */
-            while (getword(prevInputPointer) > 0);
+            while (getword(prevInputPointer, rawInputPointer) > 0);
+            rawInputPointer = rawInputPointer + wordSize + 1;
             break;
+        }
+        /* Call history if necesary */
+        if (numWords == 0 && wordSize == 2 && (*lineInputPointer == '!')){
+            int historyNumber = charToInt(*(lineInputPointer+1));
+            if (historyNumber < numOfCommands && historyNumber > 0) {
+                parse(rawInputPointer, historyNumber);
+                break;
+            } else {
+                printf("ERROR, out of history range \n");
+                break;
+            }
         }
         /* Set writeLocation pointer if > is detected */
         if (*lineInputPointer == '>' && wordSize == 1) {
-            wordSize = getword(writeLocation);
+            wordSize = getword(writeLocation, rawInputPointer);
+            rawInputPointer = rawInputPointer + wordSize + 1;
             if (wordSize == 0) {
                 perror("Error, no file was specified\n");
                 resetGlobalVariables();            
@@ -249,9 +384,11 @@ int parse()
         *(wordLocations+numWords-2) = '\0';
         numWords--;
     }
-    if (numWords > 0) {
+    if (numWords > 0 && userInputFlag == 0) {
         numOfCommands++;
     }
 }
+
+
 
 
