@@ -4,8 +4,8 @@
 /* Caleb Christiansen
  * John Carroll
  * CS570
- * Program 2
- * Due Oct 9, 2019 10/9/2019
+ * Program 4
+ * Due Nov 29, 2019 11/29/2019
  * This program is designed to emulate a real command shell. It can run programs and allows you
  * to navigate the file system, and manipulate files. Note that certain behavior is not exactly
  * like the shell. This is 100% intentional as this program's behavoir makes more sense. ;)
@@ -34,9 +34,10 @@ int repeatFlag = 0;           // 0 if no !!, 1 if !! is first word on line
 int complete = 0;             // 0 if signum not detected
 int backgroundFlag = 0;       // 0 if wait, 1 if background
 int numOfCommands = 1;        // How many successful commands have been typed?
+int pipeFlag = 0;
 char writeLocation[STORAGE];  // storage for the file to write to.
+char readLocation[STORAGE];   // storage for the file to read from.
 char rawInput[MAXINPUT];
-
 
 void myhandler(int signum) // not sure what this is for yet
 {
@@ -84,16 +85,20 @@ void saveToHistory(int instructNum)
     return;
 }
 
-void resetGlobalVariables() {
+void resetGlobalVariables()
+{
     numWords = 0;
     doneEofFlag = 0;
     cdFlag = 0;
     complete = 0;
     *writeLocation = '\0';
+    *readLocation = '\0';
     backgroundFlag = 0;
+    pipeFlag = 0;
 }
 
-void clearArray(char *arrayToClear, int size) {
+void clearArray(char *arrayToClear, int size)
+{
     int i = 0;
     for (i = 0; i < size; i++) {
         *arrayToClear = '\0';
@@ -172,57 +177,79 @@ main()
         if (repeatFlag != 0) {
                 //currently handled by parse. Is this efficient?
         }
-        fflush(NULL); //not sure if forcing data out is necessary. 
-        /* fork a child to run the requested program */
-        child = fork();
-        if (child == 0) {
-            // Child is doing this part
-            /* redirect stdin to /dev/null */
-            //int stdIn = open("/dev/null", O_RDONLY | O_RDWR | O_RDWR);
-            //int dup2In = dup2(stdIn, STDIN_FILENO);
-
-            /* Check for > to write into file */
-            if (*writeLocation != '\0')  {
-                if (access(writeLocation, F_OK) != -1) {
-                    perror("Cannot write, file already exists\n");
-                    exit(1);
-                }
-                int exists = open(writeLocation, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-                int dup2Out = dup2(exists, STDOUT_FILENO);
-                close(exists);
-            }
-
+        
+        if (pipeFlag != 1) {
+        // There is no pipe, run normally
             
-            /* This code is ineffcient! Will move to parse() later if time permits */
-            /* It is finding the arguments to place in execvp */
-            char *cmd = *wordLocationsPointer;
-            char *argv[numWords];
-            int i;
-            for (i = 0; i <= numWords; i++) {
-                argv[i] = *(wordLocationsPointer++);
-                if (i == numWords) {
-                    argv[i] = NULL;
+            fflush(NULL); //not sure if forcing data out is necessary.
+            /* fork a child to run the requested program */
+            child = fork();
+            if (child == 0) {
+                // Child is doing this part
+                /* redirect stdin to /dev/null */
+                //int stdIn = open("/dev/null", O_RDONLY | O_RDWR | O_RDWR);
+                //int dup2In = dup2(stdIn, STDIN_FILENO);
+
+                /* Check for > to write into file */
+                if (*writeLocation != '\0')  {
+                    if (access(writeLocation, F_OK) != -1) {
+                        perror("Cannot write, file already exists\n");
+                        exit(1);
+                    }
+                    int exists = open(writeLocation, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+                    int dup2Out = dup2(exists, STDOUT_FILENO);
+                    close(exists);
+                }
+                
+                /* Check for < to read from file */
+                if (*readLocation != '\0')  {
+                    if (access(readLocation, R_OK) == -1) {
+                        perror("Cannot read, file does not exist\n");
+                        exit(2);
+                    }
+                    int exists = open(readLocation, O_RDONLY);
+                    int dup2Out = dup2(exists, STDIN_FILENO);
+                    close(exists);
+                }
+                
+
+                
+                /* This code is ineffcient! Will move to parse() later if time permits */
+                /* It is finding the arguments to place in execvp */
+                char *cmd = *wordLocationsPointer;
+                char *argv[MAXINPUT];
+                int i;
+                for (i = 0; i <= numWords; i++) {
+                    argv[i] = *(wordLocationsPointer++);
+                    if (i == numWords) {
+                        argv[i] = NULL;
+                    }
+                }
+                /* execute the program! */
+                if (execvp(cmd, argv) != 0) {
+                    perror("The program could not be executed\n");
+                    exit(2);
                 }
             }
-            /* execute the program! */
-            if (execvp(cmd, argv) != 0) {
-                perror("The program could not be executed\n");
-                exit(2);
-            }
-        }
 
-        /* wait for child */ 
-        for (;;) {
-            pid_t pid;
-            if (backgroundFlag) {
-                printf("pid = [%d]\n", child);
-                printf("Process = %s\n", (*wordLocations));
-                break;
+            /* wait for child */
+            for (;;) {
+                pid_t pid;
+                if (backgroundFlag) {
+                    printf("pid = [%d]\n", child);
+                    printf("Process = %s\n", (*wordLocations));
+                    break;
+                }
+                CHK(pid = wait(NULL));
+                if (pid == child) {
+                    break;
+                }
             }
-            CHK(pid = wait(NULL));
-            if (pid == child) {
-                break;
-            }
+            
+        }
+        else {
+            // There is a pipe! run pipe code
+            
         }
     }
     killpg(getpgrp(), SIGTERM); // Terminate any children that are still running. 
@@ -231,7 +258,8 @@ main()
 
 }
 
-char * getLine() {
+char * getLine()
+{
     char character;
     int c;
     c = 0;
@@ -248,7 +276,8 @@ char * getLine() {
     return rawInput;
 }
 
-char * getHistory(int instructNum) {
+char * getHistory(int instructNum)
+{
     // After each command, save the array to its input location
     if (instructNum == 1) {
         return Input1;
@@ -274,7 +303,8 @@ char * getHistory(int instructNum) {
     return rawInput;
 }
 
-int charToInt(char charToConvert) {
+int charToInt(char charToConvert)
+{
     int x = charToConvert - '0';
     return x;
 }
@@ -313,8 +343,8 @@ int parse(char *rawInputPointer, int userInputFlag)
 
     while (wordSize > 0) {
         
-        wordSize = getword(lineInputPointer, rawInputPointer);
-        rawInputPointer = rawInputPointer + wordSize + 1;
+        char **pointerToRawInputPointer = &rawInputPointer;
+        wordSize = getword(lineInputPointer, pointerToRawInputPointer);
         *wordLocationsPointer = lineInputPointer;
         /* Check for done special case: wordSize is -1 if done is first word */
         if (wordSize == -1 && (*lineInputPointer) == 'd' && numWords > 0) {
@@ -338,15 +368,14 @@ int parse(char *rawInputPointer, int userInputFlag)
             while (*(lineInputPointer++) = *(prevInputPointer++));
             lineInputPointer = lineInput;
             /* Throw away the rest of the line */
-            while (getword(prevInputPointer, rawInputPointer) > 0);
-            rawInputPointer = rawInputPointer + wordSize + 1;
+            while (getword(prevInputPointer, pointerToRawInputPointer) > 0);
             break;
         }
         /* Call history if necesary */
         if (numWords == 0 && wordSize == 2 && (*lineInputPointer == '!')){
             int historyNumber = charToInt(*(lineInputPointer+1));
             if (historyNumber < numOfCommands && historyNumber > 0) {
-                parse(rawInputPointer, historyNumber);
+                parse(*pointerToRawInputPointer, historyNumber);
                 break;
             } else {
                 printf("ERROR, out of history range \n");
@@ -355,14 +384,23 @@ int parse(char *rawInputPointer, int userInputFlag)
         }
         /* Set writeLocation pointer if > is detected */
         if (*lineInputPointer == '>' && wordSize == 1) {
-            wordSize = getword(writeLocation, rawInputPointer);
-            rawInputPointer = rawInputPointer + wordSize + 1;
+            wordSize = getword(writeLocation, pointerToRawInputPointer);
             if (wordSize == 0) {
-                perror("Error, no file was specified\n");
+                perror("Error, no file was specified to write\n");
                 resetGlobalVariables();            
                 break;
             }
             continue; // > should not be counted as a word
+        }
+        /* Set readLocation pointer if < is detected */
+        if (*lineInputPointer == '<' && wordSize == 1) {
+            wordSize = getword(readLocation, pointerToRawInputPointer);
+            if (wordSize == 0) {
+                perror("Error, no file was specified to read\n");
+                resetGlobalVariables();
+                break;
+            }
+            continue; // < should not be counted as a word
         }
         /* Check for background command (&) */
         if (wordSize == 1 && *lineInputPointer == '&') {
@@ -388,7 +426,3 @@ int parse(char *rawInputPointer, int userInputFlag)
         numOfCommands++;
     }
 }
-
-
-
-
