@@ -151,13 +151,14 @@ main(int argc, char *argv[])
     (void) signal(SIGTERM, myhandler);
 
     for(;;) {
-        // did the file we are reading frome end?
-
+        // did the file we are reading from end?
         if (EOFDetected) {
             break;
         }
-        
-        printf("%%%d%% ", numOfCommands);
+        // only prompt if argv is not present
+        if (argvCopy[1] == NULL) {
+            printf("%%%d%% ", numOfCommands);
+        }
 
         parse(rawInput, 0);
 
@@ -299,16 +300,18 @@ main(int argc, char *argv[])
             }
 
             /* wait for child */
-            for (;;) {
-                pid_t pid;
-                if (backgroundFlag) {
-                    printf("pid = [%d]\n", child);
-                    printf("Process = %s\n", (*wordLocations));
-                    break;
-                }
-                CHK(pid = wait(NULL));
-                if (pid == child) {
-                    break;
+            if (backgroundFlag) {
+                printf("%s [%d]\n", (*wordLocations), child);
+                fflush(NULL);
+                resetGlobalVariables();
+                continue;
+            } else {
+                for (;;) {
+                    pid_t pid;
+                    CHK(pid = wait(NULL));
+                    if (pid == child) {
+                        break;
+                    }
                 }
             }
             
@@ -332,6 +335,7 @@ main(int argc, char *argv[])
                 pipe(fildes);
                 
                 //create second child
+                fflush(NULL); // ensure no duplication
                 CHK(second = fork());
                 if (second == 0) {
                     CHK(dup2(fildes[1],STDOUT_FILENO));
@@ -358,6 +362,7 @@ main(int argc, char *argv[])
                 }
                 
                 //wait for second to finish
+                if (backgroundFlag)
                 for (;;) {
                     pid_t pid;
                     CHK(pid = wait(NULL));
@@ -425,12 +430,18 @@ main(int argc, char *argv[])
                 }
             }
             
-            //wait for first to finish
-            for (;;) {
-                pid_t pid;
-                CHK(pid = wait(NULL));
-                if (pid == first) {
-                    break;
+            /* wait for child */
+            if (backgroundFlag) {
+                printf("%s [%d]\n", (*wordLocations), first);
+                fflush(NULL);
+                resetGlobalVariables();
+            } else {
+                for (;;) {
+                    pid_t pid;
+                    CHK(pid = wait(NULL));
+                    if (pid == first) {
+                        break;
+                    }
                 }
             }
         }
@@ -438,7 +449,7 @@ main(int argc, char *argv[])
 
     }
     killpg(getpgrp(), SIGTERM); // Terminate any children that are still running. 
-    if (EOFDetected == 0) printf("p2 terminated.\n"); // ensure printf is after killpg
+    if (argvCopy[1] == NULL) printf("p2 terminated.\n"); // ensure printf is after killpg
     exit(0);
 
 }
@@ -518,7 +529,6 @@ int parse(char *rawInputPointer, int userInputFlag)
 
     /* Prompt User for Input */
     if (argcCopy >= 2 && argvCopy[1] != NULL) {
-          printf("%s \n", argvCopy[1]);   
     /* Check for < to read from file */
             if (*argvCopy[1] != '\0')  {
                 if (access(argvCopy[1], R_OK) == -1) {
@@ -635,6 +645,12 @@ int parse(char *rawInputPointer, int userInputFlag)
             }
             continue; // <<& should not be counted as a word
         }
+        // check for # while reading from file
+        if (argvCopy[1] != NULL) {
+            if (*lineInputPointer == '#' && wordSize == 1) {
+                break;
+            }
+        }
         /* Check for background command (&) */
         if (wordSize == 1 && *lineInputPointer == '&') {
             backgroundFlag = 1;
@@ -657,5 +673,9 @@ int parse(char *rawInputPointer, int userInputFlag)
     }
     if (numWords > 0 && userInputFlag == 0) {
         numOfCommands++;
+    }
+    if (numWords == 0 && (*writeLocation != '\0' || *readLocation != '\0'|| *writeLocationApp != '\0' || *writeLocationBack != '\0' || *writeLocationAnd != '\0') ) {
+        perror("Error, no command specified\n");
+        resetGlobalVariables();
     }
 }
