@@ -1,6 +1,6 @@
 # C Shell
 
-This custom linux shell was written for an operating class. 
+This custom linux shell was written for an operating systems class. 
 
 ## Getting Started
 
